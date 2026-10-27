@@ -90,7 +90,7 @@
       <SpecifyDriverVerDirectiveDate>true</SpecifyDriverVerDirectiveDate>
     </Inf>
     <PreBuildEvent>
-      <Command>"$(ProjectDir)..\shellcode_builder\x64\Release\shellcode_builder.exe" "$(ProjectDir)..\driver_shellcode\x64\Release\driver_shellcode.dll" "$(ProjectDir)shellcode"</Command>
+      <Command>if exist "$(ProjectDir)..\x64\Release\shellcode_builder.exe" ("$(ProjectDir)..\x64\Release\shellcode_builder.exe" "$(ProjectDir)..\x64\Release\driver_shellcode.dll" "$(ProjectDir)shellcode") else if exist "$(ProjectDir)..\shellcode_builder\x64\Release\shellcode_builder.exe" ("$(ProjectDir)..\shellcode_builder\x64\Release\shellcode_builder.exe" "$(ProjectDir)..\driver_shellcode\x64\Release\driver_shellcode.dll" "$(ProjectDir)shellcode")</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

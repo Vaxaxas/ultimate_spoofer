@@ -6,6 +6,7 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "driver", "driver\driver.vcxproj", "{CCB19F99-B37C-4B3B-9359-CF61082C727B}"
 	ProjectSection(ProjectDependencies) = postProject
 		{7B7C3389-C692-416C-9784-3F356E84FBA6} = {7B7C3389-C692-416C-9784-3F356E84FBA6}
+		{A803D7E3-CA94-4809-8807-CF32E98A6F59} = {A803D7E3-CA94-4809-8807-CF32E98A6F59}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "driver_shellcode", "driver_shellcode\driver_shellcode.vcxproj", "{7B7C3389-C692-416C-9784-3F356E84FBA6}"
