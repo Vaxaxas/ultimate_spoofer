@@ -160,7 +160,7 @@ int main(int argc, const char** argv)
 		size_t end_marker_index = 0;
 
 		//search for the end marker magic
-		for (size_t cursor = 0; cursor < raw_data_size - sizeof(uintptr_t); cursor += 0x8) {
+		for (size_t cursor = 0; cursor <= raw_data_size - sizeof(uintptr_t); cursor += 0x4) {
 			if (*(uintptr_t*)(raw_data_ptr + cursor) == SHELLCODE_END_MARKER_MAGIC) {
 				end_marker_index = cursor;
 				break;

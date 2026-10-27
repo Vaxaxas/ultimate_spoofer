@@ -1,3 +1,60 @@
+extern "C" void* __cdecl memcpy(void*, const void*, size_t);
+extern "C" void* __cdecl memset(void*, int, size_t);
+#pragma intrinsic(memcpy, memset)
+#pragma section("shell1$a", read, execute)
+#pragma section("shell1$y", read, write)
+#pragma section("shell1$z", read, write)
+#pragma section("shell2$a", read, execute)
+#pragma section("shell2$y", read, write)
+#pragma section("shell2$z", read, write)
+#pragma section("shell3$a", read, execute)
+#pragma section("shell3$y", read, write)
+#pragma section("shell3$z", read, write)
+#pragma section("shell4$a", read, execute)
+#pragma section("shell4$y", read, write)
+#pragma section("shell4$z", read, write)
+#pragma section("shell5$a", read, execute)
+#pragma section("shell5$y", read, write)
+#pragma section("shell5$z", read, write)
+#pragma section("shell6$a", read, execute)
+#pragma section("shell6$y", read, write)
+#pragma section("shell6$z", read, write)
+#pragma section("shell7$a", read, execute)
+#pragma section("shell7$y", read, write)
+#pragma section("shell7$z", read, write)
+#pragma section("shell8$a", read, execute)
+#pragma section("shell8$y", read, write)
+#pragma section("shell8$z", read, write)
+#pragma section("shell9$a", read, execute)
+#pragma section("shell9$y", read, write)
+#pragma section("shell9$z", read, write)
+#pragma section("shell10$a", read, execute)
+#pragma section("shell10$y", read, write)
+#pragma section("shell10$z", read, write)
+#pragma section("shell11$a", read, execute)
+#pragma section("shell11$y", read, write)
+#pragma section("shell11$z", read, write)
+#pragma section("shell12$a", read, execute)
+#pragma section("shell12$y", read, write)
+#pragma section("shell12$z", read, write)
+#pragma section("shell13$a", read, execute)
+#pragma section("shell13$y", read, write)
+#pragma section("shell13$z", read, write)
+#pragma section("shell14$a", read, execute)
+#pragma section("shell14$y", read, write)
+#pragma section("shell14$z", read, write)
+#pragma section("shell15$a", read, execute)
+#pragma section("shell15$y", read, write)
+#pragma section("shell15$z", read, write)
+#pragma section("shell16$a", read, execute)
+#pragma section("shell16$y", read, write)
+#pragma section("shell16$z", read, write)
+#pragma section("shell17$a", read, execute)
+#pragma section("shell17$y", read, write)
+#pragma section("shell17$z", read, write)
+#pragma section("shell18$a", read, execute)
+#pragma section("shell18$y", read, write)
+#pragma section("shell18$z", read, write)
 //#include <wdm.h>
 #include "windef.hpp"
 #include "hash.hpp"
@@ -52,8 +109,8 @@ __forceinline bool is_hooked(uint64_t ptr)
 		(*(uint16_t*)ptr == 0xBA48 && *(uint16_t*)(ptr + 10) == 0xE2FF)) /*movabs rdx, ?; jmp rdx;*/);
 }
 
-#define CALL_RET(ret, fn, ...) {volatile auto _fn = (kernel_context::fn ## _t)((uint64_t)ctx->fn ^ ctx->xor_key); if (!is_hooked((uint64_t)_fn)){ret = (decltype(ret))_fn(__VA_ARGS__);}}
-#define CALL_NRET(fn, ...) {volatile auto _fn = (kernel_context::fn ## _t)((uint64_t)ctx->fn ^ ctx->xor_key); if (!is_hooked((uint64_t)_fn)){_fn(__VA_ARGS__);}}
+#define CALL_RET(ret, fn, ...) {volatile auto _fn = ctx->fn ? (kernel_context::fn ## _t)((uint64_t)ctx->fn ^ ctx->xor_key) : nullptr; if (_fn && !is_hooked((uint64_t)_fn)){ret = (decltype(ret))_fn(__VA_ARGS__);}}
+#define CALL_NRET(fn, ...) {volatile auto _fn = ctx->fn ? (kernel_context::fn ## _t)((uint64_t)ctx->fn ^ ctx->xor_key) : nullptr; if (_fn && !is_hooked((uint64_t)_fn)){_fn(__VA_ARGS__);}}
 
 
 #if (DBGPRINT==1)
@@ -83,6 +140,18 @@ DRIVER_DISPATCH(
 );
 
 typedef DRIVER_DISPATCH* PDRIVER_DISPATCH;
+
+__forceinline void copy_ioc_request(IOC_REQUEST* dst, PVOID src)
+{
+	volatile uint64_t* s = (volatile uint64_t*)src;
+	volatile uint64_t* d = (volatile uint64_t*)dst;
+	d[0] = s[0];
+	d[1] = s[1];
+	d[2] = s[2];
+	d[3] = s[3];
+	d[4] = s[4];
+	d[5] = s[5];
+}
 
 #include <pshpack1.h>
 typedef struct _NIC_DRIVER {
@@ -214,8 +283,7 @@ __forceinline void randomize_subserial(kernel_context *ctx, char* serial, size_t
 	auto cached_serial = get_spoofed_cache(ctx, serial_hash);
 	if (cached_serial != nullptr)
 	{
-		for (uint16_t i = 0; i < len; ++i)
-			serial[i] = cached_serial[i];
+		inline_util::memcpy(serial, cached_serial, (unsigned int)len);
 
 		STACK_LOG("randomize_subserial: using cached serial %s", serial);
 
@@ -224,9 +292,8 @@ __forceinline void randomize_subserial(kernel_context *ctx, char* serial, size_t
 
 	auto seed = serial_hash ^ ctx->startup_time;
 
-	char spoofed_serial[21] = { 0 };
-	for (auto i = 0u; i < len; ++i)
-		spoofed_serial[i] = serial[i];
+		char spoofed_serial[21]; inline_util::memzero(spoofed_serial, sizeof(spoofed_serial));
+	inline_util::memcpy(spoofed_serial, serial, (unsigned int)len);
 
 	auto& spoof_hash = ctx->SpoofHash;
 	for (auto i = 0u; i < len; ++i)
@@ -252,14 +319,12 @@ __forceinline void randomize_subserial(kernel_context *ctx, char* serial, size_t
 	// put into cache
 	auto serial_index = ctx->subserial_count++;
 	ctx->subserial_cache[serial_index] = serial_hash;
-	for (uint16_t i = 0; i < len; ++i)
-		ctx->rndsubserial_cache[serial_index][i] = spoofed_serial[i];
+	inline_util::memcpy(ctx->rndsubserial_cache[serial_index], spoofed_serial, (unsigned int)len);
 
 	ctx->rndsubserial_hashes[serial_index] = hash32(spoofed_serial);
 
 	// and now finally overwrite
-	for (auto i = 0u; i < len; ++i)
-		serial[i] = spoofed_serial[i];
+	inline_util::memcpy(serial, spoofed_serial, (unsigned int)len);
 }
 
 __forceinline void spoof_serial(kernel_context* ctx, char* serial, bool is_smart)
@@ -274,8 +339,7 @@ __forceinline void spoof_serial(kernel_context* ctx, char* serial, bool is_smart
 		is_serial_hex = false;
 		len = 20;
 		//memcpy(buf, serial, 20);
-		for (uint16_t i = 0; i < 20; ++i)
-			buf[i] = serial[i];
+		inline_util::memcpy(buf, serial, 20);
 	}
 	else
 	{
@@ -294,17 +358,12 @@ __forceinline void spoof_serial(kernel_context* ctx, char* serial, bool is_smart
 		//else
 		//{
 			//memcpy(buf, serial, len);
-		for (uint16_t i = 0; i < len; ++i)
-			buf[i] = serial[i];
+		inline_util::memcpy(buf, serial, (unsigned int)len);
 		//}
 	}
 
 	buf[len] = 0;
 	char split[2][20];
-	char buf_cpy[50] = { 0 };
-
-	for (uint8_t i = 0; i < sizeof(buf); ++i)
-		buf_cpy[i] = buf[i];
 
 	//memset(split, 0, sizeof(split));
 	__stosb((unsigned char*)split, 0, sizeof(split));
@@ -321,8 +380,7 @@ __forceinline void spoof_serial(kernel_context* ctx, char* serial, bool is_smart
 	if (is_smart)
 	{
 		//memcpy(serial, buf, 20);
-		for (uint16_t i = 0; i < 20; ++i)
-			serial[i] = buf[i];
+		inline_util::memcpy(serial, buf, 20);
 	}
 	else
 	{
@@ -347,8 +405,7 @@ __forceinline void spoof_serial(kernel_context* ctx, char* serial, bool is_smart
 		//		buf[i] = buf_cpy[i];
 		//}
 
-		for (uint16_t i = 0; i < len + 1; ++i)
-			serial[i] = buf[i];
+		inline_util::memcpy(serial, buf, (unsigned int)(len + 1));
 		//}
 	}
 }
@@ -399,8 +456,7 @@ __forceinline void spoof_mac(kernel_context* ctx, uint8_t* buf, uint32_t len)
 	// put into cache
 	auto index = ctx->mac_count++;
 	ctx->mac_hash_cache[index] = hash;
-	for (auto i = 0u; i < len; ++i)
-		ctx->mac_spoofed_cache[index][i] = spoofed_mac[i];
+	inline_util::memcpy(ctx->mac_spoofed_cache[index], spoofed_mac, (unsigned int)len);
 	ctx->mac_spoofed_hash_cache[index] = fnva1_buffer(spoofed_mac, len);
 
 	STACK_LOG("Spoof MAC: %llx -> %llx", *(uint64_t*)buf, *(uint64_t*)spoofed_mac);
@@ -413,13 +469,13 @@ namespace Shell17
 {
 #define SHELL17_SECTION_NAME "shell17"
 
-	__declspec(allocate(SHELL17_SECTION_NAME))
+	__declspec(allocate("shell17$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL17_SECTION_NAME))
+	__declspec(allocate("shell17$z"))
 		uintptr_t SHELL17_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL17_SECTION_NAME)) NTSTATUS NsiEnumerateObjectsAllParametersExHook(uint64_t nsiParams)
+	__declspec(code_seg("shell17$a")) NTSTATUS NsiEnumerateObjectsAllParametersExHook(uint64_t nsiParams)
 	{
 		auto ctx = ctx_ptr;
 		//auto ret = ctx->NsiEnumerateObjectsAllParametersExOrig((PVOID)nsiParams);
@@ -435,17 +491,18 @@ namespace Shell16
 {
 #define SHELL16_SECTION_NAME "shell16"
 
-	__declspec(allocate(SHELL16_SECTION_NAME))
+	__declspec(allocate("shell16$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL16_SECTION_NAME))
+	__declspec(allocate("shell16$z"))
 		uintptr_t SHELL16_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL16_SECTION_NAME)) NTSTATUS nsi_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
+	__declspec(code_seg("shell16$a")) NTSTATUS nsi_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
 	{
 		if (context)
 		{
-			auto request = *(PIOC_REQUEST)context;
+			IOC_REQUEST request;
+			copy_ioc_request(&request, context);
 			auto ctx = request.ctx;
 			CALL_NRET(ExFreePoolWithTag, context, 0);
 
@@ -455,7 +512,7 @@ namespace Shell16
 			{
 				for (auto i = 0u; i < request.BufferLength; ++i)
 				{
-					volatile auto buf = (uint8_t*)request.BufferLength;
+					volatile auto buf = (uint8_t*)request.Buffer;
 					buf[i] = 0;
 				}
 
@@ -476,17 +533,18 @@ namespace Shell14
 {
 #define SHELL14_SECTION_NAME "shell14"
 
-	__declspec(allocate(SHELL14_SECTION_NAME))
+	__declspec(allocate("shell14$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL14_SECTION_NAME))
+	__declspec(allocate("shell14$z"))
 		uintptr_t SHELL14_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL14_SECTION_NAME)) NTSTATUS nic_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
+	__declspec(code_seg("shell14$a")) NTSTATUS nic_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
 	{
 		if (context)
 		{
-			auto request = *(PIOC_REQUEST)context;
+			IOC_REQUEST request;
+			copy_ioc_request(&request, context);
 			auto ctx = request.ctx;
 			CALL_NRET(ExFreePoolWithTag, context, 0);
 
@@ -522,17 +580,18 @@ namespace Shell13
 {
 #define SHELL13_SECTION_NAME "shell13"
 
-	__declspec(allocate(SHELL13_SECTION_NAME))
+	__declspec(allocate("shell13$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL13_SECTION_NAME))
+	__declspec(allocate("shell13$z"))
 		uintptr_t SHELL13_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL13_SECTION_NAME)) NTSTATUS scsi_pass_through_direct_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
+	__declspec(code_seg("shell13$a")) NTSTATUS scsi_pass_through_direct_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
 	{
 		if (context)
 		{
-			auto request = *(PIOC_REQUEST)context;
+			IOC_REQUEST request;
+			copy_ioc_request(&request, context);
 			auto ctx = request.ctx;
 			CALL_NRET(ExFreePoolWithTag, context, 0);
 
@@ -558,7 +617,7 @@ namespace Shell13
 							char old_serial[50] = { 0 };
 							inline_util::strcpy(old_serial, serialNumber);
 
-							spoof_serial(request.ctx, serialNumber, false);
+					spoof_serial(request.ctx, serialNumber, false);
 							inline_util::convert_to_diskdata(disk_data, 10, 19, serialNumber);
 
 							STACK_LOG("scsi_miniport_ioc: [IOCTL_SCSI_MINIPORT_IDENTIFY] spoofing %s to %s", old_serial, serialNumber);*/
@@ -603,18 +662,19 @@ namespace Shell12
 {
 #define SHELL12_SECTION_NAME "shell12"
 
-	__declspec(allocate(SHELL12_SECTION_NAME))
+	__declspec(allocate("shell12$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL12_SECTION_NAME))
+	__declspec(allocate("shell12$z"))
 		uintptr_t SHELL12_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL12_SECTION_NAME)) NTSTATUS scsi_miniport_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
+	__declspec(code_seg("shell12$a")) NTSTATUS scsi_miniport_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
 	{
 		volatile NTSTATUS fuckyou = 0;
 		if (context)
 		{
-			auto request = *(PIOC_REQUEST)context;
+			IOC_REQUEST request;
+			copy_ioc_request(&request, context);
 			auto ctx = request.ctx;
 			CALL_NRET(ExFreePoolWithTag, context, 0);
 
@@ -680,17 +740,18 @@ namespace Shell11
 {
 #define SHELL11_SECTION_NAME "shell11"
 
-	__declspec(allocate(SHELL11_SECTION_NAME))
+	__declspec(allocate("shell11$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL11_SECTION_NAME))
+	__declspec(allocate("shell11$z"))
 		uintptr_t SHELL11_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL11_SECTION_NAME)) NTSTATUS part_layout_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
+	__declspec(code_seg("shell11$a")) NTSTATUS part_layout_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
 	{
 		if (context)
 		{
-			auto request = *(PIOC_REQUEST)context;
+			IOC_REQUEST request;
+			copy_ioc_request(&request, context);
 			auto ctx = request.ctx;
 			CALL_NRET(ExFreePoolWithTag, context, 0);
 
@@ -716,17 +777,18 @@ namespace Shell10
 {
 #define SHELL10_SECTION_NAME "shell10"
 
-	__declspec(allocate(SHELL10_SECTION_NAME))
+	__declspec(allocate("shell10$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL10_SECTION_NAME))
+	__declspec(allocate("shell10$z"))
 		uintptr_t SHELL10_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL10_SECTION_NAME)) NTSTATUS part_info_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
+	__declspec(code_seg("shell10$a")) NTSTATUS part_info_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
 	{
 		if (context)
 		{
-			auto request = *(PIOC_REQUEST)context;
+			IOC_REQUEST request;
+			copy_ioc_request(&request, context);
 			auto ctx = request.ctx;
 			CALL_NRET(ExFreePoolWithTag, context, 0);
 
@@ -751,17 +813,18 @@ namespace Shell5
 {
 #define SHELL5_SECTION_NAME "shell5"
 
-	__declspec(allocate(SHELL5_SECTION_NAME))
+	__declspec(allocate("shell5$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL5_SECTION_NAME))
+	__declspec(allocate("shell5$z"))
 		uintptr_t SHELL5_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL5_SECTION_NAME)) NTSTATUS smart_data_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
+	__declspec(code_seg("shell5$a")) NTSTATUS smart_data_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
 	{
 		if (context)
 		{
-			auto request = *(PIOC_REQUEST)context;
+			IOC_REQUEST request;
+			copy_ioc_request(&request, context);
 			auto ctx = request.ctx;
 			CALL_NRET(ExFreePoolWithTag, context, 0);
 
@@ -789,17 +852,18 @@ namespace Shell4
 {
 #define SHELL4_SECTION_NAME "shell4"
 
-	__declspec(allocate(SHELL4_SECTION_NAME))
+	__declspec(allocate("shell4$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL4_SECTION_NAME))
+	__declspec(allocate("shell4$z"))
 		uintptr_t SHELL4_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL4_SECTION_NAME)) NTSTATUS ata_pass_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
+	__declspec(code_seg("shell4$a")) NTSTATUS ata_pass_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
 	{
 		if (context)
 		{
-			auto request = *(PIOC_REQUEST)context;
+			IOC_REQUEST request;
+			copy_ioc_request(&request, context);
 			auto ctx = request.ctx;
 			CALL_NRET(ExFreePoolWithTag, context, 0);
 
@@ -817,17 +881,13 @@ namespace Shell4
 					//spoof_serial(ctx, serial_flipped, true);
 					//inline_util::swap_endianess(serial, serial_flipped);
 
-					char serialNumber[21] = { 0 };
+					char serialNumber[21];
+					inline_util::memzero(serialNumber, sizeof(serialNumber));
 					auto disk_data = (unsigned short*)(/*info->bBuffer*/(BYTE*)request.Buffer + offset);
 					inline_util::convert_to_string(disk_data, 10, 19, serialNumber);
 
-					char old_serial[50] = { 0 };
-					inline_util::strncpy(old_serial, serialNumber, 21);
-
 					spoof_serial(request.ctx, serialNumber, false);
 					inline_util::convert_to_diskdata(disk_data, 10, 19, serialNumber);
-
-					STACK_LOG("ata_pass_ioc: spoofed %s to %s", old_serial, serialNumber);
 				}
 			}
 
@@ -844,18 +904,19 @@ namespace Shell3
 {
 #define SHELL3_SECTION_NAME "shell3"
 
-	__declspec(allocate(SHELL3_SECTION_NAME))
+	__declspec(allocate("shell3$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL3_SECTION_NAME))
+	__declspec(allocate("shell3$z"))
 		uintptr_t SHELL3_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL3_SECTION_NAME)) NTSTATUS storage_query_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
+	__declspec(code_seg("shell3$a")) NTSTATUS storage_query_ioc(PDEVICE_OBJECT device, PIRP irp, PVOID context)
 	{
 		volatile NTSTATUS result = 0;
 		if (context)
 		{
-			auto request = *(PIOC_REQUEST)context;
+			IOC_REQUEST request;
+			copy_ioc_request(&request, context);
 			auto ctx = request.ctx;
 			CALL_NRET(ExFreePoolWithTag, context, 0);
 
@@ -951,10 +1012,17 @@ namespace handler
 		request->OldRoutine = 0;//(PIO_COMPLETION_ROUTINE)ioc->CompletionRoutine;
 		request->property_id = property_id;
 
-		//ioc->Control = SL_INVOKE_ON_SUCCESS | SL_INVOKE_ON_CANCEL | SL_INVOKE_ON_ERROR;
-		//ioc->Context = request;
-		//ioc->CompletionRoutine = (PIO_COMPLETION_ROUTINE)routine;
-		CALL_NRET(KseSetCompletionHook, ioc->DeviceObject, irp, (PVOID)routine, request);
+		volatile auto _kse = ctx->KseSetCompletionHook ? (kernel_context::KseSetCompletionHook_t)((uint64_t)ctx->KseSetCompletionHook ^ ctx->xor_key) : nullptr;
+		if (_kse)
+		{
+			CALL_NRET(KseSetCompletionHook, ioc->DeviceObject, irp, (PVOID)routine, request);
+		}
+		else
+		{
+			ioc->Control = SL_INVOKE_ON_SUCCESS | SL_INVOKE_ON_CANCEL | SL_INVOKE_ON_ERROR;
+			ioc->Context = request;
+			ioc->CompletionRoutine = (PIO_COMPLETION_ROUTINE)routine;
+		}
 	}
 
 	__forceinline bool handle_nvme(kernel_context* ctx, PIO_STACK_LOCATION ioc, PIRP irp)
@@ -977,14 +1045,17 @@ namespace handler
 		{
 		case IOCTL_STORAGE_QUERY_PROPERTY:
 		{
-			auto property_id = ((PSTORAGE_PROPERTY_QUERY)irp->AssociatedIrp.SystemBuffer)->PropertyId;
-			if (property_id == StorageDeviceProperty ||
-				property_id == StorageAdapterProtocolSpecificProperty)
+			if (irp->AssociatedIrp.SystemBuffer && ioc->Parameters.DeviceIoControl.InputBufferLength >= sizeof(STORAGE_PROPERTY_QUERY))
 			{
-				STACK_LOG("IOCTL_STORAGE_QUERY_PROPERTY(Control: %x, CompletionRoutine: %llx, Context: %llx, Property: %i",
-					ioc->Control, ioc->CompletionRoutine, ioc->Context, property_id);
+				auto property_id = ((PSTORAGE_PROPERTY_QUERY)irp->AssociatedIrp.SystemBuffer)->PropertyId;
+				if (property_id == StorageDeviceProperty ||
+					property_id == StorageAdapterProtocolSpecificProperty)
+				{
+					STACK_LOG("IOCTL_STORAGE_QUERY_PROPERTY(Control: %x, CompletionRoutine: %llx, Context: %llx, Property: %i",
+						ioc->Control, ioc->CompletionRoutine, ioc->Context, property_id);
 
-				change_ioc(ctx, ioc, irp, ctx->storage_query_ioc, true, property_id);
+					change_ioc(ctx, ioc, irp, ctx->storage_query_ioc, true, property_id);
+				}
 			}
 		}
 		break;
@@ -1051,13 +1122,13 @@ namespace Shell18
 {
 #define SHELL18_SECTION_NAME "shell18"
 
-	__declspec(allocate(SHELL18_SECTION_NAME))
+	__declspec(allocate("shell18$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL18_SECTION_NAME))
+	__declspec(allocate("shell18$z"))
 		uintptr_t SHELL18_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL18_SECTION_NAME)) NTSTATUS NsiControlHook(PDEVICE_OBJECT device, PIRP irp)
+	__declspec(code_seg("shell18$a")) NTSTATUS NsiControlHook(PDEVICE_OBJECT device, PIRP irp)
 	{
 		auto ctx = ctx_ptr;
 		auto ioc = irp->Tail.Overlay.CurrentStackLocation;
@@ -1170,13 +1241,13 @@ namespace Shell15
 {
 #define SHELL15_SECTION_NAME "shell15"
 
-	__declspec(allocate(SHELL15_SECTION_NAME))
+	__declspec(allocate("shell15$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL15_SECTION_NAME))
+	__declspec(allocate("shell15$z"))
 		uintptr_t SHELL15_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL15_SECTION_NAME)) NTSTATUS NicControlHook(uint64_t fuckthis, PIRP irp)
+	__declspec(code_seg("shell15$a")) NTSTATUS NicControlHook(uint64_t fuckthis, PIRP irp)
 	{
 		auto ctx = ctx_ptr;
 		NTSTATUS result = 0;
@@ -1236,25 +1307,18 @@ namespace Shell9
 {
 #define SHELL9_SECTION_NAME "shell9"
 
-	__declspec(allocate(SHELL9_SECTION_NAME))
+	__declspec(allocate("shell9$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL9_SECTION_NAME))
+	__declspec(allocate("shell9$z"))
 		uintptr_t SHELL9_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL9_SECTION_NAME)) NTSTATUS ATADeviceIdShimHookDeviceControlHook2(PDEVICE_OBJECT device, PIRP irp)
+	__declspec(code_seg("shell9$a")) NTSTATUS ATADeviceIdShimHookDeviceControlHook2(PDEVICE_OBJECT device, PIRP irp)
 	{
 		auto ctx = ctx_ptr;
-		NTSTATUS result = 0;
-		if (ctx->partmgr_hook_called)
-		{
-			ctx->partmgr_hook_called = false;
-			auto ioc = irp->Tail.Overlay.CurrentStackLocation;
-			//handler::handle_partmgr(ctx, ioc, irp);
-			handler::handle_nvme(ctx, ioc, irp); // vhdmp
-			result = ctx->PartmgrIoctlHandler(device, irp);
-		}
-		return result;
+		auto ioc = irp->Tail.Overlay.CurrentStackLocation;
+		handler::handle_nvme(ctx, ioc, irp); // vhdmp
+		return ctx->PartmgrIoctlHandler(device, irp);
 	}
 }
 
@@ -1262,13 +1326,13 @@ namespace Shell8
 {
 #define SHELL8_SECTION_NAME "shell8"
 
-	__declspec(allocate(SHELL8_SECTION_NAME))
+	__declspec(allocate("shell8$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL8_SECTION_NAME))
+	__declspec(allocate("shell8$z"))
 		uintptr_t SHELL8_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL8_SECTION_NAME)) uint64_t ATADeviceIdShimHookDeviceControlHook1(PDRIVER_OBJECT driver_object, PIRP irp)
+	__declspec(code_seg("shell8$a")) uint64_t ATADeviceIdShimHookDeviceControlHook1(PDRIVER_OBJECT driver_object, PIRP irp)
 	{
 		auto ctx = ctx_ptr;
 		ctx->partmgr_hook_called = true;
@@ -1281,13 +1345,13 @@ namespace Shell7
 {
 #define SHELL7_SECTION_NAME "shell7"
 
-	__declspec(allocate(SHELL7_SECTION_NAME))
+	__declspec(allocate("shell7$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL7_SECTION_NAME))
+	__declspec(allocate("shell7$z"))
 		uintptr_t SHELL7_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL7_SECTION_NAME)) NTSTATUS DeviceIdShimHookDeviceControlHook2(PDEVICE_OBJECT device, PIRP irp, uint64_t a3, uint64_t a4)
+	__declspec(code_seg("shell7$a")) NTSTATUS DeviceIdShimHookDeviceControlHook2(PDEVICE_OBJECT device, PIRP irp, uint64_t a3, uint64_t a4)
 	{
 		auto ctx = ctx_ptr;
 
@@ -1302,14 +1366,14 @@ namespace Shell6
 {
 #define SHELL6_SECTION_NAME "shell6"
 
-	__declspec(allocate(SHELL6_SECTION_NAME))
+	__declspec(allocate("shell6$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL6_SECTION_NAME))
+	__declspec(allocate("shell6$z"))
 		uintptr_t SHELL6_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
 	// v7 = (*(__int64 (__fastcall **)(_DRIVER_OBJECT *, PIRP))qword_1C0068290)(a1_1->DriverObject, a2);
-	__declspec(allocate(SHELL6_SECTION_NAME)) uint64_t DeviceIdShimHookDeviceControlHook1(PDRIVER_OBJECT driver_object, PIRP irp)
+	__declspec(code_seg("shell6$a")) uint64_t DeviceIdShimHookDeviceControlHook1(PDRIVER_OBJECT driver_object, PIRP irp)
 	{
 		auto ctx = ctx_ptr;
 		return (uint64_t)ctx->error_func_field2;
@@ -1320,13 +1384,13 @@ namespace Shell2
 {
 #define SHELL2_SECTION_NAME "shell2"
 
-	__declspec(allocate(SHELL2_SECTION_NAME))
+	__declspec(allocate("shell2$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL2_SECTION_NAME))
+	__declspec(allocate("shell2$z"))
 		uintptr_t SHELL2_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
-	__declspec(allocate(SHELL2_SECTION_NAME)) NTSTATUS SrbShimHookDeviceControlHook2(PDEVICE_OBJECT device, PIRP irp, uint64_t a3, uint64_t a4)
+	__declspec(code_seg("shell2$a")) NTSTATUS SrbShimHookDeviceControlHook2(PDEVICE_OBJECT device, PIRP irp, uint64_t a3, uint64_t a4)
 	{
 		auto ctx = ctx_ptr;
 		auto ioc = irp->Tail.Overlay.CurrentStackLocation;
@@ -1339,14 +1403,14 @@ namespace Shell1
 {
 #define SHELL1_SECTION_NAME "shell1"
 
-	__declspec(allocate(SHELL1_SECTION_NAME))
+	__declspec(allocate("shell1$y"))
 		auto ctx_ptr = (kernel_context*)CONTEXT_DEFAULT_MAGIC_VALUE;
 
-	__declspec(allocate(SHELL1_SECTION_NAME))
+	__declspec(allocate("shell1$z"))
 		uintptr_t SHELL1_END_MARKER = SHELLCODE_END_MARKER_MAGIC;
 
 	// v7 = (*(__int64 (__fastcall **)(_DRIVER_OBJECT *, PIRP))qword_1C0068290)(a1_1->DriverObject, a2);
-	__declspec(allocate(SHELL1_SECTION_NAME)) uint64_t SrbShimHookDeviceControlHook1(PDRIVER_OBJECT driver_object, PIRP irp)
+	__declspec(code_seg("shell1$a")) uint64_t SrbShimHookDeviceControlHook1(PDRIVER_OBJECT driver_object, PIRP irp)
 	{
 		auto ctx = ctx_ptr;
 		return (uint64_t)ctx->error_func_field1;

@@ -43,6 +43,12 @@ bool ClearHashBucketList(const wchar_t* driverName)
 
 	LOG("ci.dll: %llx, %x", ci_dll.base, ci_dll.size);
 
+	if (!globals::instance().args.g_KernelHashBucketList || !globals::instance().args.g_HashCacheLock)
+	{
+		LOG("ClearHashBucketList: offsets not provided, skipping.");
+		return false;
+	}
+
 	g_KernelHashBucketList = (PSINGLE_LIST_ENTRY)(ci_dll.base + globals::instance().args.g_KernelHashBucketList);
 	g_HashCacheLock = (PERESOURCE)(ci_dll.base + globals::instance().args.g_HashCacheLock);
 
@@ -256,92 +262,118 @@ NTSTATUS DriverEntry(DRIVER_OBJECT* driver_obj, PUNICODE_STRING reg_path)
 
 	if (!ntos || !imports::init(ntos))
 		return NTOS_IMPORT_ERROR;
-	
-	const auto& entry = (PLDR_DATA_TABLE_ENTRY)driver_obj->DriverSection;
-	
+
+	PLDR_DATA_TABLE_ENTRY entry = nullptr;
 	auto& glob = globals::instance();
-	glob.driver_base = (UINT64)entry->DllBase;
-	glob.driver_size = entry->SizeOfImage;
-	glob.driver_name = entry->BaseDllName;
 
-	LOG("%llx, %x, %wZ", glob.driver_base,
-		glob.driver_size, &glob.driver_name);
-
-	if (!read_init_data(reg_path))
+	if (driver_obj && driver_obj->DriverSection)
 	{
-		LOG("FATAL: INIT DATA NOT FOUND");
-		return INIT_DATA_ERROR;
+		entry = (PLDR_DATA_TABLE_ENTRY)driver_obj->DriverSection;
+		glob.driver_base = (UINT64)entry->DllBase;
+		glob.driver_size = entry->SizeOfImage;
+		glob.driver_name = entry->BaseDllName;
+		LOG("%llx, %x, %wZ", glob.driver_base, glob.driver_size, &glob.driver_name);
 	}
-	
+	else
+	{
+		glob.driver_base = 0;
+		glob.driver_size = 0;
+		glob.driver_name.Length = 0;
+		glob.driver_name.MaximumLength = 0;
+		glob.driver_name.Buffer = nullptr;
+		LOG("Driver loaded without DriverObject (manual map / kdmapper mode)");
+	}
+
+	bool has_init_data = false;
+	if (reg_path && reg_path->Buffer && reg_path->Length > 0)
+	{
+		has_init_data = read_init_data(reg_path);
+	}
+
+	if (!has_init_data)
+	{
+		LOG("INIT DATA NOT FOUND or manual mapping: generating random SpoofHash & applying Windows 10 19045 RVAs");
+		ULONG seed = 0x59384721;
+		CALL_RET(seed, KeQueryTimeIncrement);
+		for (int i = 0; i < 16; ++i)
+		{
+			ULONG rnd = 0;
+			CALL_RET(rnd, RtlRandomEx, &seed);
+			glob.args.SpoofHash[i] = (uint8_t)(rnd & 0xFF);
+		}
+
+		glob.args.SrbShim = 0x00069278;
+		glob.args.DeviceIdShim = 0x00069240;
+		glob.args.ATADeviceIdShim = 0x000692B0;
+		glob.args.SrbShimHookDeviceControl = 0x00058B80;
+		glob.args.DeviceIdShimHookDeviceControl = 0x00058670;
+		glob.args.ATADeviceIdShimHookDeviceControl = 0x000583A0;
+		glob.args.RaDriverDeviceControlIrp = 0x0000B140;
+		glob.args.SrbShimStorageAdapterPropertyCompletionHook = 0x00058C60;
+		glob.args.DeviceIdShimStorageDeviceIdCompletionHook = 0x00058780;
+		glob.args.KseEngine = 0x00C50620;
+		glob.args.WmipInUseRegEntryHead = 0x00C02BA8;
+		glob.args.KseSetCompletionHook = 0x00526CD0;
+	}
+
 	LOG("%-40s = 0x%08X", "MmAllocateIndependentPages", glob.args.MmAllocateIndependentPages);
 	LOG("%-40s = 0x%08X", "PiDDBLock", glob.args.PiDDBLock);
 	LOG("%-40s = 0x%08X", "PiDDBCacheTable", glob.args.PiDDBCacheTable);
 	LOG("%-40s = 0x%08X", "DirectoryTableBase", glob.args.DirectoryTableBase);
 	LOG("%-40s = 0x%08X", "UserDirectoryTableBase", glob.args.UserDirectoryTableBase);
-	//LOG("%-40s = 0x%08X", "KThreadMiscFlags", glob.args.KThreadMiscFlags);
 	LOG("%-40s = 0x%08X", "g_KernelHashBucketList", glob.args.g_KernelHashBucketList);
 	LOG("%-40s = 0x%08X", "g_HashCacheLock", glob.args.g_HashCacheLock);
-	//LOG("%-40s = 0x%08X", "GetWindowProp", glob.args.GetWindowProp);
-	//LOG("%-40s = 0x%08X", "KThreadTrapFrame", glob.args.KThreadTrapFrame);
-	//LOG("%-40s = 0x%08X", "g_AslLogPfnVPrintf", glob.args.AslLogPfnVPrintf);
 
-	// debugging....
-	//while ( true )
-	//{
-	//	SLEEP( 1 );
-	//}
-
-
-	// 
-	// PiDDB Cleanup
-	auto _piddb = piddb::instance();
-	if (!_piddb.init())
+	// PiDDB Cleanup (only if offsets available and loaded normally)
+	if (glob.args.PiDDBLock && glob.args.PiDDBCacheTable && glob.driver_base)
 	{
-		LOG("FATAL: PIDDB init failed");
-		return PIDDB_INIT_ERROR;
+		auto _piddb = piddb::instance();
+		if (_piddb.init() && _piddb.clean())
+		{
+			LOG("PIDDB Cleanup done");
+		}
+		else
+		{
+			LOG("PIDDB clean failed, continuing...");
+		}
+	}
+	else
+	{
+		LOG("PIDDB Cleanup skipped");
 	}
 
-	if (!_piddb.clean())
+	// HashBucketList Cleanup (only if offsets available and loaded normally)
+	if (glob.args.g_KernelHashBucketList && glob.args.g_HashCacheLock && glob.driver_name.Buffer)
 	{
-		LOG("FATAL: PIDDB clean failed");
-		return PIDDB_CLEAN_ERROR;
+		if (ClearHashBucketList(glob.driver_name.Buffer))
+		{
+			LOG("ClearHashBucketList done");
+		}
+		else
+		{
+			LOG("ClearHashBucketList failed, continuing...");
+		}
+	}
+	else
+	{
+		LOG("ClearHashBucketList skipped");
 	}
 
-	LOG("PIDDB Cleanup done");
-
-	//
-	//
-	if (!ClearHashBucketList(glob.driver_name.Buffer))
-	{
-		LOG("Failed to clear hash bucket list");
-		return HASHBUCKET_ERROR;
-	}
-
-	
-	LOG("ClearHashBucketList done");
-
-	// 
 	// BOOM!
 	auto driver_status = spoofer::spoof();
 	if (driver_status != SUCCESS)
 	{
-		LOG("spoofer::spoof failed with %llx", driver_status);
+		LOG("spoofer::spoof completed with status: %llx", driver_status);
 	}
 
-	//
-	// zZZZZZZZZzzZZZZ
-	LOG( "Driver unloading..." );
+	LOG("Driver routines finished.");
 
-	//
 	// Better stealthy than sorry
-	entry->FullDllName.Length = 0;
-	entry->BaseDllName.Length = 0;
+	if (entry)
+	{
+		entry->FullDllName.Length = 0;
+		entry->BaseDllName.Length = 0;
+	}
 
-	// debugging....
-	//while ( true )
-	//{
-	//	SLEEP( 1 );
-	//}
-
-	return driver_status;
+	return STATUS_SUCCESS;
 }

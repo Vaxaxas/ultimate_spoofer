@@ -237,13 +237,19 @@ namespace stealth
 		if (!util::get_module(skCrypt("ntoskrnl.exe"), ntos))
 			return 0;
 
+		if (!globals::instance().args.MmAllocateIndependentPages)
+		{
+			// Fallback to executable non-paged pool allocation when offset is not provided
+			return (uint64_t)ExAllocatePoolWithTag(NonPagedPool, size, 'tlUS');
+		}
+
 		using MmAllocateIndependentPages_t = uint64_t(*)(SIZE_T, ULONG);
 		auto fn = (MmAllocateIndependentPages_t)(ntos.base + globals::instance().args.MmAllocateIndependentPages);
 
 		KIRQL old_irql;
 		CALL_RET(old_irql, KfRaiseIrql, PASSIVE_LEVEL);
 
-		auto allocated_pages = fn(size, -1);
+		auto allocated_pages = fn(size, (ULONG)-1);
 		CALL_NO_RET(KeLowerIrql, old_irql);
 
 		if (!allocated_pages)

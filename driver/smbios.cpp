@@ -163,7 +163,7 @@ namespace spoofer::smbios
 {
 	void RandomText(char* text, const int length)
 	{
-		if (!text)
+		if (!text || length <= 0)
 			return;
 
 		static const char alphanum[] =
@@ -173,7 +173,7 @@ namespace spoofer::smbios
 		ULONG seed = 0x12345678;
 		CALL_RET(seed, KeQueryTimeIncrement);
 
-		for (auto n = 0; n <= length; n++)
+		for (auto n = 0; n < length; n++)
 		{
 			ULONG rnd;
 			CALL_RET(rnd, RtlRandomEx, &seed);
@@ -209,33 +209,20 @@ namespace spoofer::smbios
 	 */
 	void SpoofString(char* string)
 	{
+		if (!string)
+			return;
+
 		const auto length = static_cast<int>(strlen(string));
-
-		char* buffer = nullptr;
-		CALL_RET(buffer, ExAllocatePool, NonPagedPool, length);
-		//RandomText(buffer, length);
-		for (int i = 0u; i < length; ++i)
+		for (int i = 0; i < length; ++i)
 		{
-			buffer[i] = ((string[i] ^ globals::instance().args.SpoofHash[i % 16]) % 26) + 65;
+			string[i] = ((string[i] ^ globals::instance().args.SpoofHash[i % 16]) % 26) + 'A';
 		}
-
-		buffer[length] = '\0';
-
-		memcpy(string, buffer, length);
-
-		CALL_NO_RET(ExFreePoolWithTag, buffer, 0);
 	}
 
 	void SpoofGUID(GUID* guid)
 	{
-		ULONG seed;
-		CALL_RET(seed, KeQueryTimeIncrement);
-
 		for (auto n = 0; n < sizeof(GUID); n++)
 		{
-			//ULONG rnd;
-			//CALL_RET(rnd, RtlRandomEx, &seed);
-			//auto key = rnd % 0xFF;
 			*(uint8_t*)((uint64_t)guid + n) ^= globals::instance().args.SpoofHash[n % 16];
 		}
 	}
@@ -309,17 +296,12 @@ namespace spoofer::smbios
 		else if (header->Type == 4)
 		{
 			auto* type4 = reinterpret_cast<SMBIOS_TYPE4*>(header);
-			
-			LOG("%s: TYPE4: processorId: %llx", *(uint64_t*)(type4->ProcessorId));
 
-			ULONG seed;
-			CALL_RET(seed, KeQueryTimeIncrement);
+			LOG("%s: TYPE4: processorId: %llx", *(uint64_t*)(type4->ProcessorId));
 
 			// randomize processorid
 			for (uint8_t i = 0; i < sizeof(type4->ProcessorId); ++i)
 			{
-				//ULONG rnd;
-				//CALL_RET(rnd, RtlRandomEx, &seed);
 				type4->ProcessorId[i] ^= globals::instance().args.SpoofHash[i % 16];
 			}
 		}
@@ -406,7 +388,7 @@ namespace spoofer::smbios
 	NTSTATUS LoopTables(void* mapped, ULONG size)
 	{
 		auto* endAddress = static_cast<char*>(mapped) + size;
-		while (true)
+		while (mapped < endAddress)
 		{
 			auto* header = static_cast<SMBIOS_HEADER*>(mapped);
 			if (header->Type == 127 && header->Length == 4)
@@ -414,7 +396,7 @@ namespace spoofer::smbios
 
 			ProcessTable(header);
 			auto* end = static_cast<char*>(mapped) + header->Length;
-			while (0 != (*end | *(end + 1))) end++;
+			while (end < endAddress - 1 && (0 != (*end | *(end + 1)))) end++;
 			end += 2;
 			if (end >= endAddress)
 				break;

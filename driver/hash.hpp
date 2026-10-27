@@ -38,7 +38,7 @@ __forceinline const hash32_t hash32(const void* key) {
 
 } //hash_32_fnv1a
 
-static hash64_t hash64(const void* key) {
+__forceinline const hash64_t hash64(const void* key) {
 
 	const char* data = (char*)key;
 	uint64_t hash = 0xcbf29ce484222325;

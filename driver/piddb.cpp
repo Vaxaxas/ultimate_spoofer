@@ -48,6 +48,13 @@ bool piddb::init()
 	//	}
 	//}
 
+	if (!globals::instance().args.PiDDBLock || !globals::instance().args.PiDDBCacheTable)
+	{
+		LOG("PIDDB: offsets not provided, skipping PiDDB clean.");
+		m_init = false;
+		return false;
+	}
+
 	m_piddb_lock = (PERESOURCE)(ntoskrnl.base + globals::instance().args.PiDDBLock);
 	m_piddb_table = (PRTL_AVL_TABLE)(ntoskrnl.base + globals::instance().args.PiDDBCacheTable);
 

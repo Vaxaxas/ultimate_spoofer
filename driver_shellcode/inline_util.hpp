@@ -2,10 +2,19 @@
 
 namespace inline_util
 {
-    __forceinline void memcpy(void* dest, void* src, unsigned int size) 
+    __forceinline void memzero(void* dest, unsigned int size)
     {
+        volatile unsigned char* d = (volatile unsigned char*)dest;
         for (auto i = 0u; i < size; ++i)
-            *((unsigned char*)dest + i) = *((unsigned char*)src + i);
+            d[i] = 0;
+    }
+
+    __forceinline void memcpy(void* dest, const void* src, unsigned int size)
+    {
+        volatile unsigned char* d = (volatile unsigned char*)dest;
+        const volatile unsigned char* s = (const volatile unsigned char*)src;
+        for (auto i = 0u; i < size; ++i)
+            d[i] = s[i];
     }
 
     __forceinline char* strcpy(char* destination, char* source)
@@ -141,12 +150,12 @@ namespace inline_util
     {
         const auto u = uint8_t(c);
         if (u >= uint8_t('0') && u <= uint8_t('9'))
-            return u - uint8_t('0');
+            return (char)(u - uint8_t('0'));
         if (u >= uint8_t('A') && u <= uint8_t('F'))
-            return u - uint8_t('A') + 0xA;
+            return (char)(u - uint8_t('A') + 0xA);
         if (u >= uint8_t('a') && u <= uint8_t('f'))
-            return u - uint8_t('a') + 0xa;
-        return 0xFF;
+            return (char)(u - uint8_t('a') + 0xa);
+        return (char)0xFF;
     }
 
     __forceinline char hex_char(char v)
@@ -156,8 +165,8 @@ namespace inline_util
         return char(uint8_t('A') + v - 0xA);
     }
 
-    __forceinline void hex_byte(char v, char& c1, char& c2) 
-    { 
+    __forceinline void hex_byte(char v, char& c1, char& c2)
+    {
         volatile auto v1 = v;
         v1 = v1 >> 4;
 
@@ -168,15 +177,15 @@ namespace inline_util
         c2 = hex_char(v2);
     }
 
-    __forceinline char unhex_byte(char a, char b) 
-    { 
+    __forceinline char unhex_byte(char a, char b)
+    {
         volatile auto hex1 = unhex_char(a);
         volatile auto hex2 = unhex_char(b);
         volatile auto result = (hex1 << 4);
         result += hex2;
-        return result;
+        return (char)result;
     }
-    
+
     __forceinline void
         scsi_format_id_string(char* out, const uint8_t* in, int n)
     {
@@ -201,7 +210,7 @@ namespace inline_util
         }
 
         // Find the last non-space character.
-        for (i = strlen(tmp) - 1; i >= first && isspace((int)tmp[i]); i--);
+        for (i = int(strlen(tmp)) - 1; i >= first && isspace((int)tmp[i]); i--);
         int last = i;
 
         inline_util::strncpy(out, tmp + first, last - first + 1);

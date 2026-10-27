@@ -11,7 +11,7 @@
 
 #include "../x64/Release/driver.hpp"
 
-#include "mmap.hpp"
+//#include "mmap.hpp"
 #include "globals.hpp"
 #include "pdb.hpp"
 #include "registry.h"
@@ -96,7 +96,7 @@ bool prepare_registry(driver_args_t* driver_args)
 		uint32_t service_error_control = 1;
 		uint32_t service_start = 3;
 
-		if (RegSetValueExA(driver_root_key, "ImagePath", 0, REG_EXPAND_SZ, (const BYTE*)driver_path.c_str(), driver_path.length() + 1) == ERROR_SUCCESS)
+		if (RegSetValueExA(driver_root_key, "ImagePath", 0, REG_EXPAND_SZ, (const BYTE*)driver_path.c_str(), (DWORD)(driver_path.length() + 1)) == ERROR_SUCCESS)
 		{
 			if (RegSetValueExA(driver_root_key, ("Start"), 0, REG_DWORD, (const BYTE*)&service_start, sizeof(service_start)) == ERROR_SUCCESS)
 			{
@@ -129,7 +129,7 @@ bool prepare_registry(driver_args_t* driver_args)
 bool clean_registry()
 {
 	char registry_key[ 1000 ];
-	sprintf_s<1000>( registry_key, "%s%s", ( "SYSTEM\\CurrentControlSet\\Services\\" ), globals::instance()->driver_name );
+	sprintf_s<1000>( registry_key, "%s%s", ( "SYSTEM\\CurrentControlSet\\Services\\" ), globals::instance()->driver_name.c_str() );
 
 	return RegDeleteKeyA( HKEY_LOCAL_MACHINE, registry_key ) == ERROR_SUCCESS;
 }

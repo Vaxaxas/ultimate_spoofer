@@ -80,6 +80,7 @@ StyleCopReport.xml
 *.pch
 *.pdb
 *.ipdb
+*.exe
 *.pgc
 *.pgd
 *.rsp

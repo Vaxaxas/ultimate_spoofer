@@ -1,7 +1,6 @@
 #include "mac.hpp"
 
 #include <Shlwapi.h>
-#include <atlbase.h>
 #include <Iphlpapi.h>
 #include <setupapi.h>
 #include <intsafe.h>

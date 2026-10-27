@@ -1,3 +1,15 @@
+#ifndef __GNUC__
+#define __attribute__(x)
+#endif
+#ifndef __volatile
+#define __volatile volatile
+#endif
+#ifndef DISPATCH_LEVEL
+#define DISPATCH_LEVEL 2
+#endif
+#ifndef __GNUC__
+#define __attribute__(x)
+#endif
 #pragma once
 #include <stdint.h>
 
